@@ -20,36 +20,63 @@
 
         term --> factor other       term.syn = factor.syn || other.syn
 
-        other --> * term other1     other.syn = term.syn || '*' || other1.syn
-                | / term other1     other.syn = term.syn || '/' || other1.syn
+        other --> * factor other1   other.syn = factor.syn || '*' || other1.syn
+                | / factor other1   other.syn = factor.syn || '/' || other1.syn
                 | 空                other.syn = ""
 
-        factor --> (expr)           factor.syn = '(' || expr.syn || ')'
+        factor --> (expr)           factor.syn = expr.syn
                 | num               factor.syn = num.syn
+
    说明：综合属性的英文翻译为: synthesized attribute
          expr.syn表示expr的一个综合属性为syn，该属性存储expr的后缀表达式串
 */
 use std::io;
+use std::iter::Peekable;
 use std::str::Chars;
 
-fn expr(look_ahead: &mut Chars) -> String {
+fn expr(look_ahead: &mut Peekable<Chars>) -> String {
     format!("{}{}", term(look_ahead), rest(look_ahead))
 }
 
-fn term(look_ahead: &mut Chars) -> String {
-    match look_ahead.next() {
-        Some(digit @ '0'..='9') => String::from(digit),
-        _ => panic!("invalid term found"),
+fn term(look_ahead: &mut Peekable<Chars>) -> String {
+    format!("{}{}", factor(look_ahead), other(look_ahead))
+}
+
+fn rest(look_ahead: &mut Peekable<Chars>) -> String {
+    match look_ahead.peek().cloned() {
+        Some(opt @ ('+' | '-')) => {
+            look_ahead.next();
+            format!("{}{}{}", term(look_ahead), opt, rest(look_ahead))
+        }
+        _ => "".to_string(),
     }
 }
 
-fn rest(look_ahead: &mut Chars) -> String {
-    match look_ahead.next() {
-        Some(opt @ ('+' | '-')) => {
-            format!("{}{}{}", term(look_ahead), opt, rest(look_ahead))
+fn factor(look_ahead: &mut Peekable<Chars>) -> String {
+    match look_ahead.peek().cloned() {
+        Some('(') => {
+            look_ahead.next();
+            let res = expr(look_ahead);
+            if look_ahead.next() != Some(')') {
+                panic!("missing ')' in source code");
+            }
+            res
         }
-        Some(err) => panic!("unknown operator in source: {}", err),
-        None => "".to_string(),
+        Some(digit @ '0'..='9') => {
+            look_ahead.next();
+            String::from(digit)
+        }
+        _ => "".to_string(),
+    }
+}
+
+fn other(look_ahead: &mut Peekable<Chars>) -> String {
+    match look_ahead.peek().cloned() {
+        Some(opt @ ('*' | '/')) => {
+            look_ahead.next();
+            format!("{}{}{}", factor(look_ahead), opt, other(look_ahead))
+        }
+        _ => "".to_string(),
     }
 }
 
@@ -60,8 +87,7 @@ fn main() {
         .read_line(&mut buffer)
         .expect("failed to read src from stdin");
     let src = buffer.trim(); // remove '\r\n' character
-
-    let mut look_ahead = src.chars();
+    let mut look_ahead = src.chars().peekable();
     let res = expr(&mut look_ahead);
     if let Some(err) = look_ahead.next() {
         panic!("invalid input source code: {}", err);
